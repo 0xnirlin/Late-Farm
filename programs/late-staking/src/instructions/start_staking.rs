@@ -29,12 +29,13 @@ pub struct StartStaking<'info> {
     #[account(
         seeds = [b"protocol_config".as_ref()],
         bump,
+        has_one = token_mint,
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
 
     /// Token account that will hold the reward tokens
     #[account(
-        init,
+        init_if_needed,
         payer = owner,
         associated_token::mint = token_mint,
         associated_token::authority = staking_config,
@@ -97,6 +98,11 @@ impl<'info> StartStaking<'info> {
                 mint: self.token_mint.to_account_info(),
             }
         );
+
+        // msg token_amount
+        msg!("Starting staking pool with {} tokens as rewards", token_amount);
+        msg!("Period start: {}, Period end: {}", period_start, period_end);
+        msg!("Reward per second: {}", reward_per_second);
         
         transfer_checked(cpi_ctx, token_amount, self.token_mint.decimals)?;
 
