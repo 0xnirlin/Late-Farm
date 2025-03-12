@@ -34,7 +34,7 @@ pub mod late_staking {
     }
 
     /// Stake tokens in an active staking pool
-    pub fn stake(
+    pub fn deposit(
         ctx: Context<Stake>,
         amount: u64,
     ) -> Result<()> {
