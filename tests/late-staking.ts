@@ -2,8 +2,8 @@ import * as anchor from "@coral-xyz/anchor";
 import { BN, Program } from "@coral-xyz/anchor";
 import { LateStaking } from "../target/types/late_staking";
 import { BankrunProvider, startAnchor } from "anchor-bankrun";
-import { describe, test, expect, beforeEach } from '@jest/globals';
-import { PublicKey } from '@solana/web3.js';
+import { describe, test, expect, beforeAll } from '@jest/globals';
+import { PublicKey, Transaction } from '@solana/web3.js';
 import {TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
   createMint,
@@ -30,8 +30,13 @@ describe('Late Staking', () => {
   let ownerTokenAccount: PublicKey;
   let user1TokenAccount: PublicKey;
   let user2TokenAccount: PublicKey;
+  let reward_pool;
+      // Update the clock to simulate time passing
+      let currentClock;
   
-  beforeEach(async () => {
+  beforeAll(async () => {
+   
+        
     owner = new anchor.web3.Keypair();
     user1 = new anchor.web3.Keypair();
     user2 = new anchor.web3.Keypair();
@@ -132,60 +137,33 @@ describe('Late Staking', () => {
       ownerTokenAccount,
     )
 
-    console.log("Owner Account Info: ", ownerAccountInfo.amount);
-
     let user1AccountInfo = await getAccount(
       context.banksClient,
       user1TokenAccount,
     )
-
-    console.log("User1 Account Info: ", user1AccountInfo.amount);
 
     let user2AccountInfo = await getAccount(
       context.banksClient,
       user2TokenAccount,
     )
 
-    console.log("User2 Account Info: ", user2AccountInfo.amount);
+         // Update the clock to simulate time passing
+        currentClock = await context.banksClient.getClock();
+
+
+         context.setClock(
+           new Clock(
+             currentClock.slot,
+             currentClock.epochStartTimestamp,
+             currentClock.epoch,
+             currentClock.leaderScheduleEpoch,
+             BigInt(0),
+           )
+         )
     
   });
 
-  // test('initialize protocol', async () => {
-  //   // Create a token mint for testing
-    
-  //   // Find protocol config PDA
-  //   const [protocolConfig, _] = PublicKey.findProgramAddressSync(
-  //     [Buffer.from("protocol_config")],
-  //     program.programId
-  //   );
-    
-  //   // Default fee recipient (using owner in this case)
-  //   const feeRecipient = new PublicKey(0); // Pubkey::default()
-    
-  //   // Call init_protocol
-  //   await program.methods
-  //     .initProtocol(feeRecipient)
-  //     .accountsPartial({
-  //       owner: owner.publicKey,
-  //       protocolConfig: protocolConfig,
-  //       tokenMint: tokenMint,
-  //       tokenProgram: TOKEN_2022_PROGRAM_ID,
-  //       systemProgram: anchor.web3.SystemProgram.programId,
-  //     })
-  //     .signers([owner])
-  //     .rpc();
-    
-  //   // Fetch the protocol config to verify initialization
-  //   const protocolConfigAccount = await program.account.protocolConfig.fetch(protocolConfig);
-
-  //   console.log(protocolConfigAccount);
-    
-  //   // Verify the protocol was initialized correctly
-  //   expect(protocolConfigAccount.owner.toString()).toBe(owner.publicKey.toString());
-  //   expect(protocolConfigAccount.tokenMint.toString()).toBe(tokenMint.toString());
-  //   expect(protocolConfigAccount.stakingFeeRecipient.toString()).toBe(owner.publicKey.toString());
-  // });
-  test('owner stakes tokens', async () => {
+  test('init and start staking', async () => {
     // First initialize a staking pool
     const [stakingConfig, _] = PublicKey.findProgramAddressSync(
       [Buffer.from("staking_config")],
@@ -201,7 +179,7 @@ describe('Late Staking', () => {
     const feeRecipient = new PublicKey(0); // Pubkey::default()
 
     // Initialize the protocol first
-    await program.methods
+    const initProtocolTx = await program.methods
       .initProtocol(owner.publicKey)
       .accountsPartial({
         owner: owner.publicKey,
@@ -210,76 +188,187 @@ describe('Late Staking', () => {
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([owner])
-      .rpc();
+      .transaction();
+      
+    const blockhash = context.lastBlockhash;
+    initProtocolTx.recentBlockhash = blockhash;
+    initProtocolTx.sign(owner);
+    await context.banksClient.processTransaction(initProtocolTx);
       
     // Verify protocol initialization was successful
     const protocolConfigAccount = await program.account.protocolConfig.fetch(protocolConfig);
     expect(protocolConfigAccount.owner.toString()).toBe(owner.publicKey.toString());
     expect(protocolConfigAccount.tokenMint.toString()).toBe(tokenMint.toString());
-    console.log("Protocol initialized successfully");
-
-  
-
-    
 
     // Initialize staking pool with 3 day period and 1000 tokens per second reward
-    const periodEnd = Math.floor(Date.now() / 1000) + (3 * 24 * 60 * 60);
-    const rewardAmount = new BN(259200000); // 25920000 tokens per second (contract will calculate with precision)
+    const periodEnd = 5000;
+    // Log the period end timestamp
+    console.log("Staking period end timestamp:", periodEnd);
+    console.log("Staking period end date:", new Date(periodEnd * 1000).toLocaleString());
+    const rewardAmount = new BN(5000000); // 25920000 tokens per second (contract will calculate with precision)
 
     // Create the associated token account for the staking config (reward pool)
-    const reward_pool = await createAssociatedTokenAccount(
+   reward_pool = await createAssociatedTokenAccount(
       context.banksClient,
       owner,
       tokenMint,
       stakingConfig,
     );
 
-    // log token mint and staking config
-    console.log("Token Mint:", tokenMint.toString());
-    console.log("Staking Config:", stakingConfig.toString());
-
-    // console.log("Staking Config Token Account:", stakingConfigTokenAccount.toString());
-
     // Verify the token mint is initialized
     const mintInfo = await getMint(
       context.banksClient,
       tokenMint,
     );
-    console.log("Token Mint Info:", mintInfo);
 
-
-
-    // Log all the keys being passed to the startStaking instruction
-    console.log("Starting staking with the following accounts:");
-    console.log("- owner:", owner.publicKey.toString());
-    console.log("- stakingConfig:", stakingConfig.toString());
-    console.log("- tokenMint:", tokenMint.toString());
-    console.log("- protocolConfig:", protocolConfig.toString());
-    console.log("- ownerTokenAccount:", ownerTokenAccount.toString());
-    console.log("- systemProgram:", anchor.web3.SystemProgram.programId.toString());
-    console.log("- tokenProgram:", TOKEN_2022_PROGRAM_ID.toString());
-    console.log("- associatedTokenProgram:", anchor.utils.token.ASSOCIATED_PROGRAM_ID.toString());
-    console.log("- stakingConfigTokenAccount:", reward_pool.toString());
-
-    await program.methods
-    .startStaking(new BN(periodEnd), rewardAmount)
-    .accountsPartial({
-      owner: owner.publicKey,
-      stakingConfig: stakingConfig,
-      tokenMint: tokenMint,
-      protocolConfig: protocolConfig,
-      rewardPool: reward_pool,
-      ownerTokenAccount: ownerTokenAccount,
-      systemProgram: anchor.web3.SystemProgram.programId,
-      tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
-      associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-    })
-    .signers([owner])
-    .rpc();
-
-
-
+    const startStakingTx = await program.methods
+      .startStaking(new BN(periodEnd), rewardAmount)
+      .accountsPartial({
+        owner: owner.publicKey,
+        stakingConfig: stakingConfig,
+        tokenMint: tokenMint,
+        protocolConfig: protocolConfig,
+        rewardPool: reward_pool,
+        ownerTokenAccount: ownerTokenAccount,
+        systemProgram: anchor.web3.SystemProgram.programId,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+      })
+      .transaction();
+      
+    startStakingTx.recentBlockhash = context.lastBlockhash;
+    startStakingTx.sign(owner);
+    await context.banksClient.processTransaction(startStakingTx);
     
   });
+  
+  test('user1 deposits tokens', async () => {
+    // Create the associated token account for the staking config (reward pool)
+    const [stakingConfig] = PublicKey.findProgramAddressSync(
+      [Buffer.from("staking_config")],
+      program.programId
+    );
+    
+    // Log the data stored in staking config
+    const stakingConfigAccount = await program.account.stakingConfig.fetch(stakingConfig);
+
+    // log staking config
+    console.log("Staking Config:", {
+      owner: stakingConfigAccount.owner.toString(),
+      tokenMint: stakingConfigAccount.tokenMint.toString(),
+      periodEnd: stakingConfigAccount.periodEnd.toString(),
+      totalStaked: stakingConfigAccount.totalStaked.toString(),
+      rewardPerSecond: stakingConfigAccount.rewardPerSecond.toString(),
+      rewardPerTokenStored: stakingConfigAccount.rewardPerTokenStored.toString(),
+    });
+    
+    // Amount to deposit
+    const depositAmount = new BN(10000);
+
+    // initial user1 balance
+    const initialUser1Balance = await getAccount(
+      context.banksClient,
+      user1TokenAccount
+    );
+
+    // Find the user info account PDA
+    const [userInfo, userInfoBump] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_info"), user1.publicKey.toBuffer(), tokenMint.toBuffer()],
+      program.programId
+    );
+
+    // Get the stake pool (reward pool) balance before deposit
+    const stakePoolBefore = await getAccount(
+      context.banksClient,
+      reward_pool
+    );
+
+    // Execute the deposit instruction
+    const depositTx = await program.methods
+      .deposit(depositAmount)
+      .accountsPartial({
+        user: user1.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user1TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: userInfo,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .transaction();
+      
+    depositTx.recentBlockhash = context.lastBlockhash;
+    depositTx.sign(user1);
+    await context.banksClient.processTransaction(depositTx);
+
+    // Verify the deposit was successful
+    const userInfoAccount = await program.account.userInfo.fetch(userInfo);
+    expect(userInfoAccount.stakedAmount.toString()).toBe(depositAmount.toString());
+
+    // Check user1's token balance decreased
+    const finalUser1Balance = await getAccount(
+      context.banksClient,
+      user1TokenAccount
+    );
+    expect(Number(initialUser1Balance.amount) - Number(finalUser1Balance.amount)).toBe(Number(depositAmount));
+
+    // Check stake pool balance increased
+    const stakePoolBalance = await getAccount(
+      context.banksClient,
+      reward_pool
+    );
+    
+    // Calculate the expected increase in stake pool balance
+    const expectedIncrease = Number(depositAmount);
+    const actualIncrease = Number(stakePoolBalance.amount) - Number(stakePoolBefore.amount);
+    
+    // Verify the stake pool balance increased by exactly the deposit amount
+    expect(actualIncrease).toBe(expectedIncrease);
+    
+    // Also verify the total balance is at least the deposit amount
+    expect(Number(stakePoolBalance.amount)).toBeGreaterThanOrEqual(Number(depositAmount));
+
+
+ 
+    
+
+    context.setClock(
+      new Clock(
+        currentClock.slot,
+        currentClock.epochStartTimestamp,
+        currentClock.epoch,
+        currentClock.leaderScheduleEpoch,
+        BigInt(1000),
+      )
+    )
+
+    // User1 stakes again after some time has passed
+    const secondDepositAmount = new BN(5000);
+    
+    const secondDepositTx = new Transaction();
+    secondDepositTx.add(
+      await program.methods
+      .deposit(secondDepositAmount)
+      .accountsPartial({
+        user: user1.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user1TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: userInfo,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .instruction()
+    );
+    secondDepositTx.recentBlockhash = context.lastBlockhash;
+    secondDepositTx.sign(user1);
+    await context.banksClient.processTransaction(secondDepositTx);
+  });
+  
 });

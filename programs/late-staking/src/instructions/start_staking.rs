@@ -72,7 +72,11 @@ impl<'info> StartStaking<'info> {
         let period_start = current_timestamp;
         
         // Calculate rewards per second based on the total duration and token amount
-        let reward_per_second = token_amount / (period_end - period_start);
+        let duration = period_end - period_start;
+        msg!("Staking duration: {} seconds", duration);
+        
+        let reward_per_second = token_amount / duration;
+        msg!("Calculated reward per second: {}", reward_per_second);
 
         // Initialize the staking configuration with the provided values
         self.staking_config.set_values(

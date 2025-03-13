@@ -21,21 +21,23 @@ pub struct Stake<'info> {
     pub staking_config: Account<'info, StakingConfig>,
 
     #[account(
-        mut,
+        init_if_needed,
+        payer = user,
         associated_token::mint = token_mint,
         associated_token::authority = user,
     )]
     pub user_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        mut, 
+        init_if_needed,
+        payer = user,
         associated_token::mint = token_mint,
         associated_token::authority = staking_config,
     )]
     pub staking_config_token_account: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        init,
+        init_if_needed,
         payer = user,
         associated_token::mint = token_mint,
         associated_token::authority = staking_config,
@@ -43,7 +45,7 @@ pub struct Stake<'info> {
     pub stake_pool: InterfaceAccount<'info, TokenAccount>,
 
     #[account(
-        init,
+        init_if_needed,
         payer = user,
         space = 8 + UserInfo::INIT_SPACE,
         seeds = [b"user_info".as_ref(), user.key().as_ref(), token_mint.key().as_ref()],
@@ -66,8 +68,11 @@ impl<'info> Stake<'info> {
     // at t=20 seconds alice comes back and stake just 5000 token. 
     pub fn deposit(&mut self, amount: u64, bumps: StakeBumps) -> Result<()> {
         
+        msg!("Starting deposit of {} tokens", amount);
+        
         // Transfer tokens from user to stake pool
         //  Bob is transferred 
+        msg!("Transferring {} tokens from user to stake pool", amount);
         let cpi_ctx = CpiContext::new(
             self.token_program.to_account_info(), 
             TransferChecked {
@@ -82,7 +87,10 @@ impl<'info> Stake<'info> {
         // Update user info with new stake amount
         // bob user info is updated. 
         // this will be 10,001
+        msg!("Previous staked amount: {}", self.user_info.staked_amount);
         self.user_info.staked_amount += amount;
+        msg!("New staked amount: {}", self.user_info.staked_amount);
+        
         self.user_info.reward_claimed = 0;
         self.user_info.user = self.user.key();
         self.user_info.bump = bumps.user_info;
@@ -90,7 +98,9 @@ impl<'info> Stake<'info> {
         // Update total staked amount in staking config
         // 10,000
         // 15,000
+        msg!("Previous total staked: {}", self.staking_config.total_staked);
         self.staking_config.total_staked += amount;
+        msg!("New total staked: {}", self.staking_config.total_staked);
         
         // Calculate time passed since last update
         let current_time = Clock::get()?.unix_timestamp as u64;
@@ -99,17 +109,33 @@ impl<'info> Stake<'info> {
         // 10 second, reward per second is 1000.
         // when bob stakes 10 seconds have passed. 
         // time passed this time is again 10 seconds. 
+        msg!("Current time: {}, Last time: {}", current_time, last_time);
         let time_passed = current_time.checked_sub(last_time).ok_or(ErrorCode::MathOverflow)?;
+        msg!("Time passed: {} seconds", time_passed);
         
-
         let reward_per_token = if time_passed > 0 {
             // reward = 1000 * 10 / 150000 = 10,000 / 15,000 = 0.6
             // reward = 1000 * 10 / 20,000 = 0.5 tokens per token. 
+            let reward_per_second = self.staking_config.reward_per_second;
+            msg!("Reward per second: {}", reward_per_second);
+            
+            let precision = PRECISION_D9;
+            msg!("Precision factor: {}", precision);
+            
+            let reward_amount = reward_per_second * precision * time_passed;
+            msg!("Reward amount before division: {}", reward_amount);
+            
+            let total_staked = self.staking_config.total_staked;
+            msg!("Total staked: {}", total_staked);
+            
             let reward = self.staking_config.reward_per_second * PRECISION_D9 * time_passed / self.staking_config.total_staked;
+            msg!("Final reward per token: {}", reward);
+            msg!("New reward per token: {}", reward);
             
            // reward per token is stored as 0.6
            // 0.6 + 0.5 = 1.1
             self.staking_config.reward_per_token_stored += reward;
+            msg!("Updated reward per token stored: {}", self.staking_config.reward_per_token_stored);
             
             reward
         } else {
@@ -123,6 +149,7 @@ impl<'info> Stake<'info> {
         // 0
         // 5000 * 1.1 = 5500
         let reward_debt = amount * reward_per_token;
+        msg!("New reward debt: {}", reward_debt);
         self.user_info.reward_debt += reward_debt;
 
         // Calculate pending rewards for the user
@@ -134,10 +161,13 @@ impl<'info> Stake<'info> {
         // pending_reward = 3000 - 3000 = 0
         // 16500 - 5500 = 11000
         let pending_reward = reward_before_debt.checked_sub(reward_debt).ok_or(ErrorCode::MathOverflow)?;
+        msg!("Pending reward: {}", pending_reward);
         
         // Transfer any pending rewards to the user
         // now transfer happens at thispoint. 
         if pending_reward > 0 {
+            msg!("Transferring rewards: {}", pending_reward / PRECISION_D9);
+            
             let seeds = &[
                 b"staking_config".as_ref(),
                 &[self.staking_config.bump],
@@ -162,8 +192,7 @@ impl<'info> Stake<'info> {
         self.user_info.reward_claimed = pending_reward;
         self.user_info.last_updated = Clock::get()?.unix_timestamp as u64;
 
-        
-       
+        msg!("Deposit completed successfully");
         Ok(())
     }
 
