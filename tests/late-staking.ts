@@ -25,11 +25,27 @@ describe('Late Staking', () => {
   let owner: anchor.web3.Keypair;
   let user1: anchor.web3.Keypair;
   let user2: anchor.web3.Keypair;
+  let user3: anchor.web3.Keypair;
+  let user4: anchor.web3.Keypair;
+  let user5: anchor.web3.Keypair;
+  let user6: anchor.web3.Keypair;
+  let user7: anchor.web3.Keypair;
+  let user8: anchor.web3.Keypair;
+  let user9: anchor.web3.Keypair;
+  let user10: anchor.web3.Keypair;
   let context: any;
   let tokenMint: PublicKey;
   let ownerTokenAccount: PublicKey;
   let user1TokenAccount: PublicKey;
   let user2TokenAccount: PublicKey;
+  let user3TokenAccount: PublicKey;
+  let user4TokenAccount: PublicKey;
+  let user5TokenAccount: PublicKey;
+  let user6TokenAccount: PublicKey;
+  let user7TokenAccount: PublicKey;
+  let user8TokenAccount: PublicKey;
+  let user9TokenAccount: PublicKey;
+  let user10TokenAccount: PublicKey;
   let reward_pool;
       // Update the clock to simulate time passing
       let currentClock;
@@ -54,7 +70,7 @@ describe('Late Staking', () => {
       {
         address: user1.publicKey,
         info: {
-          lamports: 10000000000,
+          lamports: 1000000000,
           executable: false,
           owner: anchor.web3.SystemProgram.programId,
           data: Buffer.alloc(0),
@@ -69,6 +85,79 @@ describe('Late Staking', () => {
           data: Buffer.alloc(0),
         },
       },
+      {
+        address: user3.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user4.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user5.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user6.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user7.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user8.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user9.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+      {
+        address: user10.publicKey,
+        info: {
+          lamports: 10000000000,
+          executable: false,
+          owner: anchor.web3.SystemProgram.programId,
+          data: Buffer.alloc(0),
+        },
+      },
+
     ]);
     
     provider = new BankrunProvider(context);
@@ -103,6 +192,62 @@ describe('Late Staking', () => {
       tokenMint,
       user2.publicKey,
     )
+    
+    user3TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user3.publicKey,
+    )
+    
+    user4TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user4.publicKey,
+    )
+    
+    user5TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user5.publicKey,
+    )
+    
+    user6TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user6.publicKey,
+    )
+    
+    user7TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user7.publicKey,
+    )
+    
+    user8TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user8.publicKey,
+    )
+    
+    user9TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user9.publicKey,
+    )
+    
+    user10TokenAccount = await createAccount(
+      context.banksClient,
+      owner,
+      tokenMint,
+      user10.publicKey,
+    )
 
     await mintTo(
       context.banksClient,
@@ -110,7 +255,7 @@ describe('Late Staking', () => {
       tokenMint,
       ownerTokenAccount,
       owner.publicKey,
-      100000_000_000,
+      5000000_000_000,
     )
 
     await mintTo(
@@ -119,7 +264,7 @@ describe('Late Staking', () => {
       tokenMint,
       user1TokenAccount,
       owner.publicKey,
-      100000_000_000,
+      5000000_000_000,
     )
 
     await mintTo( 
@@ -128,7 +273,79 @@ describe('Late Staking', () => {
       tokenMint,
       user2TokenAccount,
       owner.publicKey,
-      100000_000_000,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user3TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user4TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user5TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user6TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user7TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user8TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user9TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
+    )
+    
+    await mintTo( 
+      context.banksClient,
+      owner,
+      tokenMint,
+      user10TokenAccount,
+      owner.publicKey,
+      5000000_000_000,
     )
 
     // declate variable not const
@@ -205,7 +422,7 @@ describe('Late Staking', () => {
     // Log the period end timestamp
     console.log("Staking period end timestamp:", periodEnd);
     console.log("Staking period end date:", new Date(periodEnd * 1000).toLocaleString());
-    const rewardAmount = new BN(5000000); // 25920000 tokens per second (contract will calculate with precision)
+    const rewardAmount = new BN(5000000_000_000); // 25920000 tokens per second (contract will calculate with precision)
 
     // Create the associated token account for the staking config (reward pool)
    reward_pool = await createAssociatedTokenAccount(
@@ -263,7 +480,7 @@ describe('Late Staking', () => {
     });
     
     // Amount to deposit
-    const depositAmount = new BN(10000);
+    const depositAmount = new BN(10000_000_000);
 
     // initial user1 balance
     const initialUser1Balance = await getAccount(
@@ -346,7 +563,7 @@ describe('Late Staking', () => {
     )
 
     // User1 stakes again after some time has passed
-    const secondDepositAmount = new BN(5000);
+    const secondDepositAmount = new BN(5000_000_000);
     
     const secondDepositTx = new Transaction();
     secondDepositTx.add(
