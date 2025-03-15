@@ -156,5 +156,98 @@ impl<'info> Stake<'info> {
 
         Ok(())
     }
+    pub fn withdraw(&mut self) -> Result<()> {
+        require!(
+            self.user_info.staked_amount > 0,
+            ErrorCode::MathOverflow
+        );
 
+        let amount = self.user_info.staked_amount;
+        msg!("Withdrawing all: {}", amount);
+
+        let current_time = Clock::get()?.unix_timestamp as u64;
+        let last_time = self.staking_config.last_updated;
+
+        // If current time is greater than end time, set it to end time
+        let current_time = if current_time > self.staking_config.period_end {
+            self.staking_config.period_end
+        } else {
+            current_time
+        };
+        
+        msg!("Current time: {}", current_time);
+        msg!("Last time: {}", last_time);
+        
+        let time_passed = current_time.checked_sub(last_time).ok_or(ErrorCode::MathOverflow)?;
+        msg!("Time passed: {}", time_passed);
+        
+        let reward_per_token = if time_passed > 0 && self.staking_config.total_staked > 0 {
+            let reward = self.staking_config.reward_per_second * PRECISION_D9 * time_passed / self.staking_config.total_staked;
+            self.staking_config.reward_per_token_stored += reward;
+            self.staking_config.reward_per_token_stored
+        } else {
+            self.staking_config.reward_per_token_stored
+        };
+
+        // Calculate pending rewards
+        let reward_before_debt = (self.user_info.staked_amount * self.staking_config.reward_per_token_stored) / PRECISION_D9;
+        msg!("Reward before debt: {}", reward_before_debt / PRECISION_D9);
+        
+        let pending_reward = reward_before_debt.checked_sub(self.user_info.reward_debt).ok_or(ErrorCode::MathOverflow)?;
+        msg!("Pending reward: {}", pending_reward / PRECISION_D9);
+        
+        // Transfer pending rewards if any
+        if pending_reward > 0 {
+            let seeds = &[
+                b"staking_config".as_ref(),
+                &[self.staking_config.bump],
+            ];
+            let signer = &[&seeds[..]];
+            
+            let cpi_ctx = CpiContext::new_with_signer(
+                self.token_program.to_account_info(), 
+                TransferChecked {
+                    authority: self.staking_config.to_account_info(),
+                    from: self.staking_config_token_account.to_account_info(),
+                    to: self.user_token_account.to_account_info(),
+                    mint: self.token_mint.to_account_info(),
+                },
+                signer
+            );
+            transfer_checked(cpi_ctx, pending_reward, self.token_mint.decimals)?;
+            self.user_info.reward_claimed += pending_reward;
+        }
+        
+        // Transfer all staked tokens back to user
+        let seeds = &[
+            b"staking_config".as_ref(),
+            &[self.staking_config.bump],
+        ];
+        let signer = &[&seeds[..]];
+        
+        let cpi_ctx = CpiContext::new_with_signer(
+            self.token_program.to_account_info(), 
+            TransferChecked {
+                authority: self.staking_config.to_account_info(),
+                from: self.stake_pool.to_account_info(),
+                to: self.user_token_account.to_account_info(),
+                mint: self.token_mint.to_account_info(),
+            },
+            signer
+        );
+        transfer_checked(cpi_ctx, amount, self.token_mint.decimals)?;
+        
+        // Update staking config and user info
+        self.staking_config.total_staked = self.staking_config.total_staked.checked_sub(amount).ok_or(ErrorCode::MathOverflow)?;
+        self.user_info.staked_amount = 0;
+        
+        // Update state
+        self.staking_config.last_updated = current_time;
+        self.user_info.last_updated = current_time;
+        
+        // Reset reward debt since no tokens are staked
+        self.user_info.reward_debt = 0;
+        
+        Ok(())
+    }
 }

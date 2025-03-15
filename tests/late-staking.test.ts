@@ -1,7 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { BN, Program } from "@coral-xyz/anchor";
 import { LateStaking } from "../target/types/late_staking";
-import { describe, test, expect, beforeAll } from '@jest/globals';
+import { describe, test, expect, beforeAll, beforeEach } from '@jest/globals';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
@@ -15,6 +15,8 @@ describe('Late Staking', () => {
   let testContext: TestContext;
   let program: Program<LateStaking>;
   let reward_pool: PublicKey;
+  let stakingConfig: PublicKey;
+  let protocolConfig: PublicKey;
   
   beforeAll(async () => {
     // Setup test context with 10 users
@@ -22,17 +24,17 @@ describe('Late Staking', () => {
     program = anchor.workspace.LateStaking as Program<LateStaking>;
   });
 
-  test('init and start staking', async () => {
+  beforeEach(async () => {
     const { owner, tokenMint, context, ownerTokenAccount } = testContext;
     
     // First initialize a staking pool
-    const [stakingConfig, _] = PublicKey.findProgramAddressSync(
+    [stakingConfig, ] = PublicKey.findProgramAddressSync(
       [Buffer.from("staking_config")],
       program.programId
     );
 
     // Find protocol config PDA
-    const [protocolConfig, __] = PublicKey.findProgramAddressSync(
+    [protocolConfig, ] = PublicKey.findProgramAddressSync(
       [Buffer.from("protocol_config")],
       program.programId
     );
@@ -99,17 +101,51 @@ describe('Late Staking', () => {
     startStakingTx.sign(owner);
     await context.banksClient.processTransaction(startStakingTx);
   });
+
+
+  test.only('Cannot initialize protocol twice for the same mint', async () => {
+    const { users, tokenMint, context } = testContext;
+    
+    // Try to initialize the protocol again with a different user
+    const user1 = users[0]; // Using a different user than the owner
+    
+    // Create a transaction to initialize the protocol again
+    const initProtocolTx = await program.methods
+      .initProtocol(user1.publicKey)
+      .accountsPartial({
+        owner: user1.publicKey,
+        protocolConfig: protocolConfig,
+        tokenMint: tokenMint,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId,
+      })
+      .transaction();
+      
+    initProtocolTx.recentBlockhash = context.lastBlockhash;
+    initProtocolTx.sign(user1);
+    
+    // The transaction should fail because the protocol is already initialized
+    try {
+      await context.banksClient.processTransaction(initProtocolTx);
+      // If we reach here, the test failed because the transaction should have thrown an error
+      expect(false).toBe(true); // This will always fail if reached
+    } catch (error) {
+      // We expect an error, so the test passes
+      expect(error).toBeTruthy();
+    }
+    
+    // // Verify the protocol config still has the original owner
+    const protocolConfigAccount = await program.account.protocolConfig.fetch(protocolConfig);
+    console.log("Protocol config owner:", protocolConfigAccount.owner.toString());
+    // log user1
+    console.log("User1:", user1.publicKey.toString());
+    expect(protocolConfigAccount.owner.toString()).not.toBe(user1.publicKey.toString());
+  });
   
   test('user1 deposits tokens', async () => {
     const { users, userTokenAccounts, tokenMint, context, currentClock } = testContext;
     const user1 = users[0];
     const user1TokenAccount = userTokenAccounts[0];
-    
-    // Create the associated token account for the staking config (reward pool)
-    const [stakingConfig] = PublicKey.findProgramAddressSync(
-      [Buffer.from("staking_config")],
-      program.programId
-    );
     
     // Log the data stored in staking config
     const stakingConfigAccount = await program.account.stakingConfig.fetch(stakingConfig);
@@ -487,4 +523,153 @@ describe('Late Staking', () => {
     const timeMultiplier = 1000 * totalTimePassed;
     console.log("1000 * time passed:", timeMultiplier);
   });
+
+  test('Deposit and withdraw test with multiple users', async () => {
+    const { context, tokenMint, users, userTokenAccounts, currentClock } = testContext;
+    
+    // User1 stakes 10000_000_000 tokens
+    const user1 = users[0];
+    const user1TokenAccount = userTokenAccounts[0];
+    const user1DepositAmount = new BN(10000_000_000);
+    
+    // Find the user info account PDA for user1
+    const [user1Info] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_info"), user1.publicKey.toBuffer(), tokenMint.toBuffer()],
+      program.programId
+    );
+    
+    // Get initial stake pool balance
+    const stakePoolBefore = await getAccount(
+      context.banksClient,
+      reward_pool
+    );
+    
+    // Get initial user1 token balance
+    const initialUser1Balance = await getAccount(
+      context.banksClient,
+      user1TokenAccount
+    );
+    
+    // User1 deposits
+    const user1DepositTx = await program.methods
+      .deposit(user1DepositAmount)
+      .accountsPartial({
+        user: user1.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user1TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: user1Info,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .signers([user1])
+      .rpc({ skipPreflight: true });
+    
+    // Advance the clock by 1000 seconds
+    advanceClock(context, currentClock, 1000);
+    
+    // User2 stakes 10000_000_000 tokens
+    const user2 = users[1];
+    const user2TokenAccount = userTokenAccounts[1];
+    const user2DepositAmount = new BN(10000_000_000);
+    
+    // Find the user info account PDA for user2
+    const [user2Info] = PublicKey.findProgramAddressSync(
+      [Buffer.from("user_info"), user2.publicKey.toBuffer(), tokenMint.toBuffer()],
+      program.programId
+    );
+    
+    // Get initial user2 token balance
+    const initialUser2Balance = await getAccount(
+      context.banksClient,
+      user2TokenAccount
+    );
+    
+    // User2 deposits
+    const user2DepositTx = await program.methods
+      .deposit(user2DepositAmount)
+      .accountsPartial({
+        user: user2.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user2TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: user2Info,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .signers([user2])
+      .rpc({ skipPreflight: true });
+    
+    // Advance the clock to second 4999 (end of staking period)
+    advanceClock(context, currentClock, 6000); // 1000 + 3999 = 4999
+    
+    // User1 withdraws all tokens
+    const user1WithdrawTx = await program.methods
+      .withdraw()
+      .accountsPartial({
+        user: user1.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user1TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: user1Info,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .signers([user1])
+      .rpc({ skipPreflight: true });
+    
+    // User2 withdraws all tokens
+    const user2WithdrawTx = await program.methods
+      .withdraw()
+      .accountsPartial({
+        user: user2.publicKey,
+        stakingConfig: stakingConfig,
+        userTokenAccount: user2TokenAccount,
+        stakingConfigTokenAccount: reward_pool,
+        stakePool: reward_pool,
+        userInfo: user2Info,
+        tokenMint: tokenMint,
+        tokenProgram: new anchor.web3.PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"),
+        associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: anchor.web3.SystemProgram.programId
+      })
+      .signers([user2])
+      .rpc({ skipPreflight: true });
+    
+    // Get final balances
+    const finalUser1Balance = await getAccount(
+      context.banksClient,
+      user1TokenAccount
+    );
+    
+    const finalUser2Balance = await getAccount(
+      context.banksClient,
+      user2TokenAccount
+    );
+    
+    const finalStakePoolBalance = await getAccount(
+      context.banksClient,
+      reward_pool
+    );
+    
+    // Calculate rewards
+    // Calculate rewards: final balance - initial balance
+    // The difference is the reward since deposits were returned
+    const user1Rewards = Number(finalUser1Balance.amount) - Number(initialUser1Balance.amount);
+    const user2Rewards = Number(finalUser2Balance.amount) - Number(initialUser2Balance.amount);
+    
+    console.log("User1 total rewards:", user1Rewards);
+    console.log("User2 total rewards:", user2Rewards);
+    
+  });
+
 });

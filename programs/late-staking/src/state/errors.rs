@@ -10,4 +10,7 @@ pub enum ErrorCode {
 
     #[msg("Staking period ended")]
     StakingPeriodEnded,
+
+    #[msg("Invalid owner")]
+    InvalidOwner,
 }

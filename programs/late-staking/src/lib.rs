@@ -41,4 +41,10 @@ pub mod late_staking {
         ctx.accounts.deposit(amount, ctx.bumps)
     }
 
+    pub fn withdraw(
+        ctx: Context<Stake>,
+    ) -> Result<()> {
+        ctx.accounts.withdraw()
+    }
+
 }

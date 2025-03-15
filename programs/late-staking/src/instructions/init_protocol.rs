@@ -5,7 +5,7 @@ use anchor_spl::{
 };
 
 use crate::state::{ProtocolConfig, PROTOCOL_FEE};
-
+use crate::state::errors::ErrorCode;
 #[derive(Accounts)]
 pub struct InitProtocol<'info> {
     #[account(mut)]
@@ -14,7 +14,6 @@ pub struct InitProtocol<'info> {
     pub protocol_config: Account<'info, ProtocolConfig>,
 
     /// CHECK: This is just used to store the mint address
-    pub token_mint: UncheckedAccount<'info>,
 
     pub token_program: Interface<'info, TokenInterface>,
 
@@ -23,17 +22,19 @@ pub struct InitProtocol<'info> {
 
 impl<'info> InitProtocol<'info> {
     pub fn init_protocol(&mut self, fee_recipient: Pubkey, bumps: InitProtocolBumps) -> Result<()> {
+
         let fee_recipient = if fee_recipient == Pubkey::default() {
             self.owner.key()
         } else {
             fee_recipient
         };
+
+
         
         self.protocol_config.owner = self.owner.key();
         self.protocol_config.staking_fee_recipient = fee_recipient;
         self.protocol_config.staking_fee = PROTOCOL_FEE; // Using the constant for the fee
         self.protocol_config.bump = bumps.protocol_config;
-        self.protocol_config.token_mint = self.token_mint.key();
         
         Ok(())
     }

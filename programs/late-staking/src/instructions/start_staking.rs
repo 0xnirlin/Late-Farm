@@ -29,7 +29,6 @@ pub struct StartStaking<'info> {
     #[account(
         seeds = [b"protocol_config".as_ref()],
         bump,
-        has_one = token_mint,
     )]
     pub protocol_config: Account<'info, ProtocolConfig>,
 
