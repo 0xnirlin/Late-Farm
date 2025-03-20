@@ -34,11 +34,17 @@ pub mod late_staking {
     }
 
     /// Stake tokens in an active staking pool
-    pub fn stake(
+    pub fn deposit(
         ctx: Context<Stake>,
         amount: u64,
     ) -> Result<()> {
         ctx.accounts.deposit(amount, ctx.bumps)
+    }
+
+    pub fn withdraw(
+        ctx: Context<Stake>,
+    ) -> Result<()> {
+        ctx.accounts.withdraw()
     }
 
 }

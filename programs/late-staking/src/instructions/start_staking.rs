@@ -34,7 +34,7 @@ pub struct StartStaking<'info> {
 
     /// Token account that will hold the reward tokens
     #[account(
-        init,
+        init_if_needed,
         payer = owner,
         associated_token::mint = token_mint,
         associated_token::authority = staking_config,
@@ -71,7 +71,11 @@ impl<'info> StartStaking<'info> {
         let period_start = current_timestamp;
         
         // Calculate rewards per second based on the total duration and token amount
-        let reward_per_second = token_amount / (period_end - period_start);
+        let duration = period_end - period_start;
+        msg!("Staking duration: {} seconds", duration);
+        
+        let reward_per_second = token_amount / duration;
+        msg!("Calculated reward per second: {}", reward_per_second);
 
         // Initialize the staking configuration with the provided values
         self.staking_config.set_values(
@@ -97,6 +101,11 @@ impl<'info> StartStaking<'info> {
                 mint: self.token_mint.to_account_info(),
             }
         );
+
+        // msg token_amount
+        msg!("Starting staking pool with {} tokens as rewards", token_amount);
+        msg!("Period start: {}, Period end: {}", period_start, period_end);
+        msg!("Reward per second: {}", reward_per_second);
         
         transfer_checked(cpi_ctx, token_amount, self.token_mint.decimals)?;
 
